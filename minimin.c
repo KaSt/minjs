@@ -13,14 +13,14 @@ struct work {
 	unsigned char *xnonce2;
 	size_t xnonce2_size;
 	unsigned char **merkle;
-    unsigned char **merkleArray;
+    	unsigned char **merkleArray;
 	int merkle_count;
 	unsigned char version[4];
 	unsigned char nbits[4];
 	unsigned char ntime[4];
 	unsigned char *coinbase;
-    unsigned char *coinbase1;
-    unsigned char *coinbase2;
+    	unsigned char *coinbase1;
+    	unsigned char *coinbase2;
 	size_t coinbase_size;
 	unsigned char prevhash[32];
 	double diff;	
@@ -29,12 +29,12 @@ struct work {
 #define bswap_32(x) ((((x) << 24) & 0xff000000u) | (((x) << 8) & 0x00ff0000u) \
                    | (((x) >> 8) & 0x0000ff00u) | (((x) >> 24) & 0x000000ffu))
 
-static inline uint32_t swab32(uint32_t v)
+uint32_t EMSCRIPTEN_KEEPALIVE swab32(uint32_t v)
 {
         return bswap_32(v);
 }
 
-uint32_t * diff_to_target(double diff)
+uint32_t * EMSCRIPTEN_KEEPALIVE diff_to_target(double diff)
 {
     uint32_t *target;
     uint64_t m;
@@ -55,7 +55,7 @@ uint32_t * diff_to_target(double diff)
 
 
 #if !HAVE_DECL_BE32DEC
-static inline uint32_t be32dec(const void *pp)
+uint32_t EMSCRIPTEN_KEEPALIVE be32dec(const void *pp)
 {
 	const uint8_t *p = (uint8_t const *)pp;
 	return ((uint32_t)(p[3]) + ((uint32_t)(p[2]) << 8) +
@@ -64,7 +64,7 @@ static inline uint32_t be32dec(const void *pp)
 #endif
 
 #if !HAVE_DECL_LE32DEC
-static inline uint32_t le32dec(const void *pp)
+uint32_t EMSCRIPTEN_KEEPALIVE le32dec(const void *pp)
 {
 	const uint8_t *p = (uint8_t const *)pp;
 	return ((uint32_t)(p[0]) + ((uint32_t)(p[1]) << 8) +
@@ -73,7 +73,7 @@ static inline uint32_t le32dec(const void *pp)
 #endif
 
 #if !HAVE_DECL_BE32ENC
-static inline void be32enc(void *pp, uint32_t x)
+void EMSCRIPTEN_KEEPALIVE be32enc(void *pp, uint32_t x)
 {
 	uint8_t *p = (uint8_t *)pp;
 	p[3] = x & 0xff;
@@ -84,7 +84,7 @@ static inline void be32enc(void *pp, uint32_t x)
 #endif
 
 #if !HAVE_DECL_LE32ENC
-static inline void le32enc(void *pp, uint32_t x)
+void EMSCRIPTEN_KEEPALIVE le32enc(void *pp, uint32_t x)
 {
 	uint8_t *p = (uint8_t *)pp;
 	p[0] = x & 0xff;
@@ -272,7 +272,7 @@ static void sha256d_80_swap(uint32_t *hash, const uint32_t *data)
 		hash[i] = swab32(hash[i]);
 }
 
-void sha256d(unsigned char *hash, const unsigned char *data, int len)
+void EMSCRIPTEN_KEEPALIVE sha256d(unsigned char *hash, const unsigned char *data, int len)
 {
 	uint32_t S[16], T[16];
 	int i, r;
@@ -531,7 +531,7 @@ static inline void sha256d_ms(uint32_t *hash, uint32_t *W,
 	         + sha256_h[7];
 }
 
-bool hex2bin(unsigned char *p, unsigned char *hexstr, size_t len)
+bool EMSCRIPTEN_KEEPALIVE hex2bin(unsigned char *p, unsigned char *hexstr, size_t len)
 {
     char hex_byte[3];
     char *ep;
@@ -556,7 +556,7 @@ bool hex2bin(unsigned char *p, unsigned char *hexstr, size_t len)
     return (len == 0 && *hexstr == 0) ? true : false;
 }
 
-unsigned char ** generateMerkle(struct work *work) {
+unsigned char ** EMSCRIPTEN_KEEPALIVE generateMerkle(struct work *work) {
     
     unsigned char **merkle;
     for (int i = 0; i < work->merkle_count; i++) {
@@ -567,7 +567,7 @@ unsigned char ** generateMerkle(struct work *work) {
     return merkle;
 }
 
-bool fulltest(const uint32_t *hash, const uint32_t *target)
+bool EMSCRIPTEN_KEEPALIVE fulltest(const uint32_t *hash, const uint32_t *target)
 {
 	int i;
 	bool rc = true;
@@ -586,7 +586,7 @@ bool fulltest(const uint32_t *hash, const uint32_t *target)
 	return rc;
 }
 
-int scanhash_sha256d(uint32_t *pdata, const uint32_t *ptarget, uint32_t nonce,
+int EMSCRIPTEN_KEEPALIVE scanhash_sha256d(uint32_t *pdata, const uint32_t *ptarget, uint32_t nonce,
 	uint32_t max_nonce)
 {
 	uint32_t data[64] __attribute__((aligned(128)));
@@ -621,7 +621,7 @@ int scanhash_sha256d(uint32_t *pdata, const uint32_t *ptarget, uint32_t nonce,
 	return -1;
 }
 
-uint32_t * prepareData(struct work *work) {
+uint32_t * EMSCRIPTEN_KEEPALIVE prepareData(struct work *work) {
     int i;
     unsigned char merkle_root[64];
     
