@@ -1,3 +1,4 @@
 a.out
-a.out.js
-minjs.js
+*.js
+*.o
+*.bc

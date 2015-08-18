@@ -3,27 +3,31 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <emscripten.h>
 
 struct work {
 	uint32_t data[32];
-	uint32_t target[8];
-
-	char *job_id;
-	size_t xnonce2_len;
-	unsigned char *xnonce2;
-	size_t xnonce2_size;
+	char *jobId;
+    unsigned char *extraNonce;
+	unsigned char *extraNonce2;
+    unsigned char *nonce;
+    unsigned char *maxNonce;
+	size_t extraNonceSize;
 	unsigned char **merkle;
-    	unsigned char **merkleArray;
+    unsigned char **merkleBranch;
 	int merkle_count;
 	unsigned char version[4];
-	unsigned char nbits[4];
-	unsigned char ntime[4];
+	unsigned char bits[4];
+	unsigned char time[4];
 	unsigned char *coinbase;
-    	unsigned char *coinbase1;
-    	unsigned char *coinbase2;
+    unsigned char *coinBase1;
+    unsigned char *coinBase2;
 	size_t coinbase_size;
-	unsigned char prevhash[32];
-	double diff;	
+	unsigned char previousHash[32];
+	double diff;
+    int workSize;
+    uint32_t * target;
+    
 };
 
 #define bswap_32(x) ((((x) << 24) & 0xff000000u) | (((x) << 8) & 0x00ff0000u) \
@@ -523,6 +527,60 @@ static inline void sha256d_ms(uint32_t *hash, uint32_t *W,
 	         + sha256_h[7];
 }
 
+bool  fulltest(const uint32_t *hash, const uint32_t *target)
+{
+    int i;
+    bool rc = true;
+    
+    for (i = 7; i >= 0; i--) {
+        if (hash[i] > target[i]) {
+            rc = false;
+            break;
+        }
+        if (hash[i] < target[i]) {
+            rc = true;
+            break;
+        }
+    }
+    
+    return rc;
+}
+
+int  scanhash_sha256d(uint32_t *pdata, const uint32_t *ptarget, uint32_t nonce,
+                      uint32_t max_nonce)
+{
+    uint32_t data[64] __attribute__((aligned(128)));
+    uint32_t hash[8] __attribute__((aligned(32)));
+    uint32_t midstate[8] __attribute__((aligned(32)));
+    uint32_t prehash[8] __attribute__((aligned(32)));
+    uint32_t n = nonce;
+    const uint32_t first_nonce = pdata[19];
+    const uint32_t Htarg = ptarget[7];
+    
+    memcpy(data, pdata + 16, 64);
+    sha256d_preextend(data);
+    
+    sha256_init(midstate);
+    sha256_transform(midstate, pdata, 0);
+    memcpy(prehash, midstate, 32);
+    sha256d_prehash(prehash, pdata + 16);
+    
+    do {
+        data[3] = ++n;
+        sha256d_ms(hash, data, midstate, prehash);
+        if (swab32(hash[7]) <= Htarg) {
+            pdata[19] = data[3];
+            sha256d_80_swap(hash, pdata);
+            if (fulltest(hash, ptarget)) {
+                return n;
+            }
+        }
+    } while (n < max_nonce);
+    
+    pdata[19] = n;
+    return -1;
+}
+
 bool  hex2bin(unsigned char *p, unsigned char *hexstr, size_t len)
 {
     char hex_byte[3];
@@ -551,69 +609,45 @@ bool  hex2bin(unsigned char *p, unsigned char *hexstr, size_t len)
 unsigned char **  generateMerkle(struct work *work) {
     
     unsigned char **merkle;
-    for (int i = 0; i < work->merkle_count; i++) {
-        unsigned char *s = work->merkleArray[i];
+    int i;
+    
+    for (i = 0; i < work->merkle_count; i++) {
+        unsigned char *s = work->merkleBranch[i];
         merkle[i] = malloc(32);
         hex2bin(merkle[i], s, 32);
     }
     return merkle;
 }
 
-bool  fulltest(const uint32_t *hash, const uint32_t *target)
-{
-	int i;
-	bool rc = true;
-	
-	for (i = 7; i >= 0; i--) {
-		if (hash[i] > target[i]) {
-			rc = false;
-			break;
-		}
-		if (hash[i] < target[i]) {
-			rc = true;
-			break;
-		}
-	}
-
-	return rc;
+unsigned char * generateCoinbase(struct work *work) {
+    
+    unsigned char *job_id, *prevhash, *coinb1, *coinb2, *version, *nbits, *ntime;
+    size_t coinb1_size, coinb2_size;
+    bool clean, ret = false;
+    int merkle_count, i;
+    unsigned char **merkle;
+    
+    coinb1_size = strlen((const char *)work->coinBase1) / 2;
+    coinb2_size = strlen((const char *)work->coinBase2) / 2;
+    work->coinbase_size = coinb1_size + work->extraNonceSize +
+    work->extraNonceSize + coinb2_size;
+    realloc(work->coinbase, work->coinbase_size);
+    work->extraNonce2 = work->coinbase + coinb1_size + work->extraNonceSize;
+    hex2bin(work->coinbase, coinb1, coinb1_size);
+    memcpy(work->coinbase + coinb1_size, work->extraNonce, work->extraNonceSize);
+    memset(work->extraNonce2, 0, work->extraNonceSize);
+    hex2bin(work->extraNonce2 + work->extraNonceSize, coinb2, coinb2_size);
+    
+    return work->coinbase;
 }
 
-int  scanhash_sha256d(uint32_t *pdata, const uint32_t *ptarget, uint32_t nonce,
-	uint32_t max_nonce)
-{
-	uint32_t data[64] __attribute__((aligned(128)));
-	uint32_t hash[8] __attribute__((aligned(32)));
-	uint32_t midstate[8] __attribute__((aligned(32)));
-	uint32_t prehash[8] __attribute__((aligned(32)));
-	uint32_t n = nonce;
-	const uint32_t first_nonce = pdata[19];
-	const uint32_t Htarg = ptarget[7];
-	
-	memcpy(data, pdata + 16, 64);
-	sha256d_preextend(data);
-	
-	sha256_init(midstate);
-	sha256_transform(midstate, pdata, 0);
-	memcpy(prehash, midstate, 32);
-	sha256d_prehash(prehash, pdata + 16);
-	
-	do {
-		data[3] = ++n;
-		sha256d_ms(hash, data, midstate, prehash);
-		if (swab32(hash[7]) <= Htarg) {
-			pdata[19] = data[3];
-			sha256d_80_swap(hash, pdata);
-			if (fulltest(hash, ptarget)) {
-				return n;
-			}
-		}
-	} while (n < max_nonce);
-	
-	pdata[19] = n;
-	return -1;
+unsigned char * generatePrevHash(struct work * work) {
+    unsigned char * tmp = malloc(32*sizeof(char));
+    hex2bin(tmp, work->previousHash, 32);
+    return tmp;
 }
 
-uint32_t *  prepareData(struct work *work) {
+uint32_t * generateData(struct work *work) {
     int i;
     unsigned char merkle_root[64];
     
@@ -625,17 +659,17 @@ uint32_t *  prepareData(struct work *work) {
 	}
     
 /* Increment extranonce2 */
-	for (i = 0; i < work->xnonce2_size && !++work->xnonce2[i]; i++);
+	for (i = 0; i < work->extraNonceSize && !++work->extraNonce2[i]; i++);
 
 /* Assemble block header */
 	memset(work->data, 0, 128);
 	work->data[0] = le32dec(work->version);
 	for (i = 0; i < 8; i++)
-		work->data[1 + i] = le32dec((uint32_t *)work->prevhash + i);
+		work->data[1 + i] = le32dec((uint32_t *)work->previousHash + i);
 	for (i = 0; i < 8; i++)
 		work->data[9 + i] = be32dec((uint32_t *)merkle_root + i);
-	work->data[17] = le32dec(work->ntime);
-	work->data[18] = le32dec(work->nbits);
+	work->data[17] = le32dec(work->time);
+	work->data[18] = le32dec(work->bits);
 	work->data[20] = 0x80000000;
 	work->data[31] = 0x00000280;
     
@@ -643,10 +677,5 @@ uint32_t *  prepareData(struct work *work) {
 }
 
 int main() {
-    uint32_t  *data, *target;
-    struct work *work;
-	data = prepareData(work);
-    target = diff_to_target(work->diff);
-	return 0;
+    EM_ASM( asmReady() );
 }
-
